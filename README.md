@@ -1,70 +1,144 @@
-# ufam-db-tp3
+# tpch-pgsql
+[![Build status](https://travis-ci.org/Data-Science-Platform/tpch-pgsql.svg?branch=master)](https://travis-ci.org/Data-Science-Platform/tpch-pgsql)
 
-Repositorio base para o Trabalho 3 de Banco de Dados da Graduação em Ciencia da Computação na UFAM
-[Link do trabalho](https://docs.google.com/document/d/17Uobq1brb6TbbCr64DWCEWG9J-LAGpgXuOC3BVpczx4/edit#)
+Implements the [TPC-H benchmark](http://www.tpc.org/tpch/) for Postgres
 
-## Copiando esse repositorio
+### Requirements
+* The benchmark requires TPC-H dbgen:
+```
+wget -q https://github.com/electrum/tpch-dbgen/archive/32f1c1b92d1664dba542e927d23d86ffa57aa253.zip -O tpch-dbgen.zip
+unzip -q tpch-dbgen.zip && mv tpch-dbgen-32f1c1b92d1664dba542e927d23d86ffa57aa253 tpch-dbgen && rm tpch-dbgen.zip
+```
+* gcc
 
-Você deve ter uma conta no github, criar é gratis, e ele é essencial para a vida e carreira de você.
-
-Para fazer isso siga esses passos:
-
-<https://user-images.githubusercontent.com/118348/229365938-48d261c8-b569-463c-bc00-462eb218b423.mp4>
-
-Para entender melhor [git e github](https://www.alura.com.br/artigos/o-que-e-git-github).
-
-## Configurando
-
-### Docker
-
-Instalando o [docker desktop (Windows, Linux e Mac)](https://www.docker.com/products/docker-desktop/)
-
-Instalando na linha de comando
-
-[Docker](https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-20-04-pt)
-
-### Python e Virtualenv
-
-Você deve configurar uma virtualenv do python para não instalar as bibliotecas no seu python do sistema.
-
-Se seu python é 3.3+
-
-```bash
-python -m venv venv
-source venv/bin/activate
+```
+gcc --version
 ```
 
-Agora você pode instalar os pacotes do python:
+* python3
 
-```bash
-pip install -r requirements.txt
+```
+python3 --version
 ```
 
-## Rodando o docker
+* python requirements
 
-Primeiro, você deve configurar seu dockerfile:
-
-1. Definir qual distro linux vai usar
-2. Instalar Python3.8+ e Pip
-
-Agora você pode construir sua imagem:
-
-```bash
-docker build . -t tp3
+```
+pip3 install -r requirements.txt
 ```
 
-Depois que terminar, você pode rodar seu docker assim:
+* some running instance of Postgres, e.g. if running locally, the following command should not fail
 
-```bash
-docker run -p 5433:5432 -v $(pwd)/datadir/:/app/datadir tp3 tp3 <comando para subir o postgres>
+```
+pg_config --version
 ```
 
-No jupyter notebook, você pode acessar o postgres na **porta 5433**\
-
-O trabalho pede para testar varios formatos de sistema de arquivo. Para fazer isso, você deve montar tal um diretorio na sua maquina com o sistema de arquivo e passar ele para o docker.
-
-Exemplo: Vou testar o **ext3**, depois de montar a pasta, farei o seguinte:
-
-```bash
-docker run -p 5433:5432 -v $(pwd)/datadir_ext3/:/app/datadir <comando para subir o postgres>
+* if you want to run the database locally, please find below the commands for Ubuntu 14.04
 ```
+sudo apt-get install -y postgresql postgresql-contrib
+
+sudo -u postgres createuser tpch
+sudo -u postgres createdb tpchdb
+
+sudo -u postgres psql  << PSQL
+ALTER USER tpch WITH ENCRYPTED PASSWORD '********';
+GRANT ALL PRIVILEGES ON DATABASE tpchdb TO tpch;
+\l
+\q
+PSQL
+```
+these can be adjusted for your OS easily.
+
+In case you are using a remote PostgreSQL database, make sure your connection is working and 
+you have a valid username and password. 
+
+```
+$ psql -h <host> -p 5432 -d <database> -U <username> -W
+Password for user tpch:
+psql (9.3.23)
+SSL connection (cipher: DHE-RSA-AES256-GCM-SHA384, bits: 256)
+Type "help" for help.
+
+tpchdb=> \q
+```
+Also make sure that you have full rights on the target database (GRANT ALL PRIVILEGES)
+
+### Usage
+There is a single python file that implements all phases of the benchmark.
+
+```
+usage: tpch_pgsql.py [-h] [-H HOST] [-p PORT] [-U USERNAME] [-W [PASSWORD]]
+                     [-d DBNAME] [-i DATA_DIR] [-q QUERY_ROOT] [-g DBGEN_DIR]
+                     [-s SCALE] [-n NUM_STREAMS] [-b] [-r]
+                     {prepare,load,query}
+
+tpch_pgsql
+
+positional arguments:
+  {prepare,load,query}  Phase of TPC-H benchmark to run.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -H HOST, --host HOST  Address of host on which PostgreSQL instance runs;
+                        default is localhost
+  -p PORT, --port PORT  Port on which PostgreSQL instance runs; default is
+                        5432
+  -U USERNAME, --username USERNAME
+                        User for the PostgreSQL instance; default is postgres
+  -W [PASSWORD], --password [PASSWORD]
+                        Password for the PostgreSQL instance; default is
+                        test123
+  -d DBNAME, --dbname DBNAME
+                        Name of the database; default is tpch
+  -i DATA_DIR, --data-dir DATA_DIR
+                        Directory for generated data; default is ./data
+  -q QUERY_ROOT, --query-root QUERY_ROOT
+                        Directory for query files; default is ./query_root
+  -g DBGEN_DIR, --dbgen-dir DBGEN_DIR
+                        Directory containing tpch dbgen source; default is
+                        ./tpch-dbgen
+  -s SCALE, --scale SCALE
+                        Size of the data generated, scale factor; default is
+                        1.0 = 1GB
+  -n NUM_STREAMS, --num-streams NUM_STREAMS
+                        Number of streams to run the throughput test with;
+                        default is 0, i.e. based on scale factor SF
+  -b, --verbose         Print more information to standard output
+  -r, --read-only       Do not execute refresh functions during the query
+                        phase, which allows for running it repeatedly
+```
+
+### Phases
+* `prepare`  
+The prepare phase builds TPC-H dbgen and querygen and creates the load and refresh (update/delete) files. 
+
+* `load`  
+The load phase cleans the database (if required), loads the tables into the database and 
+creates indexes for querying. The results for this phase consist of the following metrics:
+    * Schema creation time
+    * Data loading time
+    * Foreign key constraint and index creation time
+
+* `query`  
+The query phase is the actual performance test. Ir runs twice, with a reboot.
+Each run consists of two parts:
+    * Power test: This consists of sequential execution of the refresh functions and the query streams. It reports back with the execution times for:
+        * refresh function 1
+        * query execution time for the 22 TPC-H queries
+        * refresh function 2
+    * Throughput test: This consists of parallel execution of the query streams and the pairs of refresh functions
+
+### TPC-H Process
+The complete process for executing TPC-H tests is illustrated in the following figure:
+![tpch-process](images/tpch_process.png "TPC-H Benchmark Process")
+
+### Database Schema
+![db-schema](images/TPC-H_Datamodel.png "TPC-H Database Schema")
+
+### Known Issues
+* Sometimes the data generation phase fails due to file permission issues. In such a scenario delete the data directory and all generated `.tbl` files inside your `tpch-dbgen` directory.
+
+### References
+
+* For notes on how to the TPC-H benchmark works see the paper [iceis2012](https://github.com/Data-Science-Platform/tpch-pgsql/blob/master/iceis2012.pdf).
+* For the TPC-H benchmark specification see [this document](http://www.tpc.org/tpc_documents_current_versions/pdf/tpc-h_v2.17.3.pdf).
